@@ -1,123 +1,196 @@
-import Head from 'next/head'
-import Image from 'next/image'
-import { Inter } from 'next/font/google'
-import styles from '@/styles/Home.module.css'
+/* eslint-disable @next/next/no-page-custom-font */
+import { useState, useRef, useEffect, useCallback } from "react";
+import Head from "next/head";
 
-const inter = Inter({ subsets: ['latin'] })
+import styles from "@/styles/Home.module.css";
+import PlayingField from "@/components/PlayingField/PlayingField";
+import HiddenInput from "@/components/HiddenInput/HiddenInput";
+interface notFoundLetters {
+  [key: string]: number;
+}
+
+const validationState = {
+  correct: "correct",
+  incorrect: "incorrect",
+  partiallyCorrect: "partiallyCorrect",
+};
+
+const getRandomWord = async () => {
+  const data = await (
+    await fetch("https://random-word-api.herokuapp.com/word?number=1&length=5")
+  ).json();
+
+  const word = data[0];
+
+  return word;
+};
+
+const saveRandomWordWithDate = (word: string) => {
+  const date = new Date();
+  localStorage.setItem("randomWord", word);
+  localStorage.setItem("randomWordDate", date.toString());
+};
+
+const getNewRandomWord = async () => {
+  const word = await getRandomWord();
+  saveRandomWordWithDate(word);
+};
+
+const getGameSettings = async () => {
+  const maxTries = 6;
+  const wordLength = 5;
+  const debugMode = false;
+
+  if (localStorage.getItem("randomWord") === undefined) {
+    await getNewRandomWord();
+  } else {
+    const date = new Date();
+    const savedDate = new Date(localStorage.getItem("randomWordDate") || "");
+    const diff = Math.abs(date.getTime() - savedDate.getTime());
+    const diffDays = Math.ceil(diff / (1000 * 3600 * 24));
+
+    if (diffDays > 1) {
+      await getNewRandomWord();
+    }
+  }
+
+  const currentWord = localStorage.getItem("randomWord") || "";
+
+  return { maxTries, wordLength, currentWord, debugMode };
+};
 
 export default function Home() {
+  const initValues = [[{ state: "", value: "" }]];
+
+  const [debugMode, setDebugMode] = useState(false);
+  const [maxTries, setMaxTries] = useState(6);
+  const [wordLength, setWordLength] = useState(5);
+  const [currentWord, setCurrentWord] = useState("hello");
+  const [values, setValues] = useState(initValues);
+  const [currentTry, setCurrentTry] = useState(0);
+
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
+  const [hiddenInputValue, setHiddenInputValue] = useState("");
+
+  const fetchGameSettings = useCallback(async () => {
+    const { maxTries, wordLength, currentWord, debugMode } =
+      await getGameSettings();
+
+    setMaxTries(maxTries);
+    setWordLength(wordLength);
+    setCurrentWord(currentWord);
+    setDebugMode(debugMode);
+  }, []);
+
+  useEffect(() => {
+    fetchGameSettings().catch((err) => console.log(err));
+  }, [fetchGameSettings]);
+
+  const validateWord = () => {
+    const wordToValidate = values[currentTry];
+    const currentWordArray = currentWord.split("");
+
+    let notFoundLetters: notFoundLetters = {};
+
+    // First compare current word with input word, mark correct letters and add not found letters to notFoundLetters object
+    for (let i = 0; i < currentWordArray.length; i++) {
+      const letterToCheck = currentWordArray[i];
+
+      if (wordToValidate[i].value === letterToCheck) {
+        wordToValidate[i].state = validationState.correct;
+      } else {
+        notFoundLetters[letterToCheck] =
+          (notFoundLetters[letterToCheck] || 0) + 1;
+      }
+    }
+
+    // Now compare input word with current word, mark partially correct letters and mark incorrect letters
+    for (let i = 0; i < wordToValidate.length; i++) {
+      const letterToCheck = wordToValidate[i].value;
+
+      if (letterToCheck !== currentWordArray[i]) {
+        if (notFoundLetters[letterToCheck]) {
+          notFoundLetters[letterToCheck] -= 1;
+          wordToValidate[i].state = validationState.partiallyCorrect;
+        } else {
+          wordToValidate[i].state = validationState.incorrect;
+        }
+      }
+    }
+
+    // Save validated word to values
+    const newValues = [...values];
+    newValues[currentTry] = wordToValidate;
+    setValues(newValues);
+  };
+
+  const renderWordToPlayingField = (word: String) => {
+    const wordArray = word.split("");
+
+    const newValues = [...values];
+
+    const wordWithState = wordArray.map((letter) => {
+      return { state: "", value: letter };
+    });
+
+    if (values[currentTry] === undefined) {
+      newValues.push(wordWithState);
+    } else {
+      newValues[currentTry] = wordWithState;
+    }
+
+    setValues(newValues);
+  };
+
+  const onHiddenInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputVal = e.target.value;
+
+    if (inputVal.length <= wordLength) {
+      setHiddenInputValue(e.target.value);
+      renderWordToPlayingField(inputVal);
+    }
+  };
+
+  const onClickPlayingField = () => {
+    hiddenInputRef.current?.focus();
+  };
+
+  const clearHiddenInput = () => {
+    setHiddenInputValue("");
+  };
+
+  const handlePressEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      if (hiddenInputValue.length === wordLength) {
+        validateWord();
+        clearHiddenInput();
+        setCurrentTry(currentTry + 1);
+      }
+    }
+  };
+
   return (
     <>
       <Head>
-        <title>Create Next App</title>
         <meta name="description" content="Generated by create next app" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <main className={styles.main}>
-        <div className={styles.description}>
-          <p>
-            Get started by editing&nbsp;
-            <code className={styles.code}>src/pages/index.tsx</code>
-          </p>
-          <div>
-            <a
-              href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              By{' '}
-              <Image
-                src="/vercel.svg"
-                alt="Vercel Logo"
-                className={styles.vercelLogo}
-                width={100}
-                height={24}
-                priority
-              />
-            </a>
-          </div>
-        </div>
-
-        <div className={styles.center}>
-          <Image
-            className={styles.logo}
-            src="/next.svg"
-            alt="Next.js Logo"
-            width={180}
-            height={37}
-            priority
-          />
-          <div className={styles.thirteen}>
-            <Image
-              src="/thirteen.svg"
-              alt="13"
-              width={40}
-              height={31}
-              priority
-            />
-          </div>
-        </div>
-
-        <div className={styles.grid}>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Docs <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Find in-depth information about Next.js features and&nbsp;API.
-            </p>
-          </a>
-
-          <a
-            href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Learn <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Learn about Next.js in an interactive course with&nbsp;quizzes!
-            </p>
-          </a>
-
-          <a
-            href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Templates <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Discover and deploy boilerplate example Next.js&nbsp;projects.
-            </p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Deploy <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Instantly deploy your Next.js site to a shareable URL
-              with&nbsp;Vercel.
-            </p>
-          </a>
-        </div>
+        <HiddenInput
+          ref={hiddenInputRef}
+          value={hiddenInputValue}
+          onChange={onHiddenInputChange}
+          debug={debugMode}
+          onKeyDown={handlePressEnter}
+        />
+        <PlayingField
+          rows={maxTries}
+          columns={wordLength}
+          values={values}
+          onClick={onClickPlayingField}
+        />
       </main>
     </>
-  )
+  );
 }
