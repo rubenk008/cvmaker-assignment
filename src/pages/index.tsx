@@ -5,6 +5,7 @@ import Head from "next/head";
 import styles from "@/styles/Home.module.css";
 import PlayingField from "@/components/PlayingField/PlayingField";
 import HiddenInput from "@/components/HiddenInput/HiddenInput";
+
 interface notFoundLetters {
   [key: string]: number;
 }
